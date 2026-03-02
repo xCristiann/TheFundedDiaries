@@ -1,91 +1,54 @@
 ﻿"use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 
 export default function SuccessClient() {
   const sp = useSearchParams();
-  const router = useRouter();
-  const sessionId = useMemo(() => sp.get("session_id") || sp.get("sessionId") || "", [sp]);
+  const sessionId = sp.get("session_id");
 
-  const [loading, setLoading] = useState(true);
-  const [data, setData] = useState(null);
-  const [error, setError] = useState("");
+  const [msg, setMsg] = useState("Finalizing your order…");
 
   useEffect(() => {
     let cancelled = false;
 
-    async function verify() {
+    (async () => {
       try {
         if (!sessionId) {
-          setError("Missing session_id in URL.");
-          setLoading(false);
+          setMsg("Payment successful. If your account is not visible yet, refresh Dashboard in 10 seconds.");
           return;
         }
 
-        // dacă ai endpoint: /api/stripe/status/[sessionId]
-        const r = await fetch(`/api/stripe/status/${encodeURIComponent(sessionId)}`, { cache: "no-store" });
-        const j = await r.json().catch(() => ({}));
-
+        // optional status endpoint (you already have it)
+        const r = await fetch(`/api/stripe/status/${sessionId}`, { cache: "no-store" });
         if (!r.ok) {
-          throw new Error(j?.error || `Status check failed (${r.status})`);
+          setMsg("Payment successful. Your challenge will appear in Dashboard shortly.");
+          return;
         }
-
+        const j = await r.json().catch(() => ({}));
         if (cancelled) return;
-        setData(j);
-        setLoading(false);
-      } catch (e) {
-        if (cancelled) return;
-        setError(e?.message || "Failed to verify session");
-        setLoading(false);
+        setMsg(j?.status ? `Payment status: ${j.status}` : "Payment successful. Your challenge will appear in Dashboard shortly.");
+      } catch {
+        if (!cancelled) setMsg("Payment successful. Your challenge will appear in Dashboard shortly.");
       }
-    }
+    })();
 
-    verify();
     return () => { cancelled = true; };
   }, [sessionId]);
 
   return (
     <div className="min-h-[70vh] flex items-center justify-center px-6">
       <div className="w-full max-w-xl rounded-2xl border border-white/10 bg-white/[0.03] p-8 backdrop-blur-xl">
-        <h1 className="text-3xl font-bold mb-2">Payment success</h1>
-
-        {loading ? (
-          <p className="text-gray-400">Verifying payment...</p>
-        ) : error ? (
-          <>
-            <p className="text-red-400 font-semibold">Could not verify</p>
-            <p className="text-gray-400 mt-2">{error}</p>
-          </>
-        ) : (
-          <>
-            <p className="text-green-400 font-semibold">Verified ✅</p>
-            <p className="text-gray-400 mt-2">
-              If your account provisioning is automatic, it should appear in Dashboard shortly.
-            </p>
-            <pre className="mt-4 text-xs text-gray-300 bg-black/20 rounded-xl p-4 overflow-auto">
-{JSON.stringify(data, null, 2)}
-            </pre>
-          </>
-        )}
+        <h1 className="text-3xl font-bold mb-2">Payment successful</h1>
+        <p className="text-gray-400">{msg}</p>
 
         <div className="mt-6 flex gap-3">
-          <button
-            onClick={() => router.push("/dashboard")}
-            className="px-4 py-2 rounded-xl bg-blue-500/80 hover:bg-blue-500 transition"
-          >
+          <a href="/dashboard" className="rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 px-5 py-3 font-semibold">
             Go to Dashboard
-          </button>
-          <button
-            onClick={() => router.push("/challenges")}
-            className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 transition"
-          >
+          </a>
+          <a href="/challenges" className="rounded-xl border border-white/10 bg-white/[0.03] px-5 py-3 font-semibold text-gray-200">
             Back to Challenges
-          </button>
-        </div>
-
-        <div className="mt-6 text-xs text-gray-500">
-          session_id: <span className="font-mono">{sessionId || "-"}</span>
+          </a>
         </div>
       </div>
     </div>
