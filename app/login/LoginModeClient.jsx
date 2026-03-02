@@ -12,7 +12,6 @@ export default function LoginModeClient({ children, onMode }) {
     if (onMode) onMode(mode);
   }, [mode, onMode]);
 
-  // dacă vine ceva dubios în URL, îl normalizăm
   useEffect(() => {
     if (mode !== "login" && mode !== "signup") {
       router.replace("/login?mode=login");

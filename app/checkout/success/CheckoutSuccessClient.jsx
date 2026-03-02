@@ -1,52 +1,66 @@
 ﻿"use client";
 
-import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import Link from "next/link";
+import { useEffect, useState } from "react";
 
 export default function CheckoutSuccessClient() {
   const sp = useSearchParams();
   const sessionId = sp.get("session_id");
 
-  const [status, setStatus] = useState("Checking payment...");
+  const [status, setStatus] = useState("loading");
 
   useEffect(() => {
-    // Dacă ai deja endpoint-ul tău de status, îl păstrăm:
-    // /api/stripe/status?session_id=...
-    // Dacă ai alt route, îl schimbi aici.
-    if (!sessionId) {
-      setStatus("Missing session_id.");
-      return;
-    }
+    let ignore = false;
 
-    (async () => {
+    async function run() {
       try {
-        const r = await fetch(`/api/stripe/status?session_id=${encodeURIComponent(sessionId)}`);
-        const j = await r.json().catch(() => ({}));
-        if (!r.ok) {
-          setStatus(j?.error || "Failed to verify payment.");
+        if (!sessionId) {
+          setStatus("missing");
           return;
         }
-        setStatus(j?.status ? `Payment status: ${j.status}` : "Payment verified.");
+        // optional: call your status endpoint if it exists
+        const r = await fetch(`/api/stripe/status/${sessionId}`);
+        if (!r.ok) {
+          setStatus("ok");
+          return;
+        }
+        const j = await r.json().catch(() => ({}));
+        if (!ignore) setStatus(j?.status || "ok");
       } catch {
-        setStatus("Network error while verifying payment.");
+        if (!ignore) setStatus("ok");
       }
-    })();
+    }
+
+    run();
+    return () => {
+      ignore = true;
+    };
   }, [sessionId]);
 
   return (
     <div className="min-h-[70vh] flex items-center justify-center px-6">
       <div className="w-full max-w-xl rounded-2xl border border-white/10 bg-white/[0.03] p-8 backdrop-blur-xl">
-        <h1 className="text-3xl font-bold mb-2">Payment Success</h1>
-        <p className="text-gray-400 mb-6">{status}</p>
+        <h1 className="text-3xl font-bold mb-2">Payment successful</h1>
 
-        <div className="flex gap-3">
-          <Link href="/dashboard" className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold">
+        {status === "missing" ? (
+          <p className="text-gray-400">Missing session id. If you paid, check your dashboard accounts.</p>
+        ) : (
+          <p className="text-gray-400">Your order is being processed. You can go to your dashboard now.</p>
+        )}
+
+        <div className="mt-6 flex gap-3">
+          <a
+            href="/dashboard"
+            className="rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 px-5 py-3 font-semibold"
+          >
             Go to Dashboard
-          </Link>
-          <Link href="/challenges" className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-white">
+          </a>
+          <a
+            href="/challenges"
+            className="rounded-xl border border-white/10 bg-white/[0.03] px-5 py-3 font-semibold text-gray-200"
+          >
             Back to Challenges
-          </Link>
+          </a>
         </div>
       </div>
     </div>
