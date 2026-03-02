@@ -1,0 +1,251 @@
+-- TheFundedDiaries Database Schema for Supabase
+
+-- Enable UUID extension
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Profiles table (extends auth.users)
+CREATE TABLE IF NOT EXISTS profiles (
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  full_name TEXT NOT NULL,
+  role TEXT DEFAULT 'user' CHECK (role IN ('user', 'admin')),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Challenges table
+CREATE TABLE IF NOT EXISTS challenges (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  type TEXT NOT NULL CHECK (type IN ('one-step', 'two-step', 'instant', 'pay-after-pass')),
+  balance INTEGER NOT NULL,
+  profit_target NUMERIC NOT NULL,
+  daily_drawdown NUMERIC NOT NULL,
+  max_drawdown NUMERIC NOT NULL,
+  price NUMERIC NOT NULL,
+  active BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Trading accounts table
+CREATE TABLE IF NOT EXISTS trading_accounts (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  challenge_id UUID REFERENCES challenges(id) ON DELETE SET NULL,
+  account_login TEXT NOT NULL UNIQUE,
+  account_password TEXT NOT NULL,
+  balance NUMERIC DEFAULT 0,
+  equity NUMERIC DEFAULT 0,
+  status TEXT DEFAULT 'active' CHECK (status IN ('active', 'breached', 'funded', 'failed')),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Trades table
+CREATE TABLE IF NOT EXISTS trades (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  account_id UUID NOT NULL REFERENCES trading_accounts(id) ON DELETE CASCADE,
+  symbol TEXT NOT NULL,
+  type TEXT NOT NULL CHECK (type IN ('buy', 'sell')),
+  lot_size NUMERIC NOT NULL,
+  entry_price NUMERIC NOT NULL,
+  exit_price NUMERIC,
+  pnl NUMERIC,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Payouts table
+CREATE TABLE IF NOT EXISTS payouts (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  account_id UUID NOT NULL REFERENCES trading_accounts(id) ON DELETE CASCADE,
+  amount NUMERIC NOT NULL,
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Create indexes for better performance
+CREATE INDEX IF NOT EXISTS idx_profiles_role ON profiles(role);
+CREATE INDEX IF NOT EXISTS idx_trading_accounts_user_id ON trading_accounts(user_id);
+CREATE INDEX IF NOT EXISTS idx_trading_accounts_status ON trading_accounts(status);
+CREATE INDEX IF NOT EXISTS idx_trades_account_id ON trades(account_id);
+CREATE INDEX IF NOT EXISTS idx_payouts_account_id ON payouts(account_id);
+CREATE INDEX IF NOT EXISTS idx_payouts_status ON payouts(status);
+
+-- Insert default challenges
+INSERT INTO challenges (type, balance, profit_target, daily_drawdown, max_drawdown, price, active)
+VALUES 
+  ('two-step', 10000, 10, 5, 10, 99, true),
+  ('two-step', 25000, 10, 5, 10, 199, true),
+  ('two-step', 50000, 10, 5, 10, 299, true),
+  ('two-step', 100000, 10, 5, 10, 499, true),
+  ('instant', 10000, 8, 5, 8, 299, true),
+  ('instant', 25000, 8, 5, 8, 599, true)
+ON CONFLICT DO NOTHING;
+
+-- Enable Row Level Security (RLS)
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE trading_accounts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE trades ENABLE ROW LEVEL SECURITY;
+ALTER TABLE payouts ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies for profiles
+CREATE POLICY "Users can view their own profile"
+  ON profiles FOR SELECT
+  USING (auth.uid() = id);
+
+CREATE POLICY "Users can update their own profile"
+  ON profiles FOR UPDATE
+  USING (auth.uid() = id);
+
+CREATE POLICY "Admins can view all profiles"
+  ON profiles FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM profiles
+      WHERE profiles.id = auth.uid() AND profiles.role = 'admin'
+    )
+  );
+
+-- RLS Policies for trading_accounts
+CREATE POLICY "Users can view their own accounts"
+  ON trading_accounts FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert their own accounts"
+  ON trading_accounts FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Admins can view all accounts"
+  ON trading_accounts FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM profiles
+      WHERE profiles.id = auth.uid() AND profiles.role = 'admin'
+    )
+  );
+
+CREATE POLICY "Admins can update all accounts"
+  ON trading_accounts FOR UPDATE
+  USING (
+    EXISTS (
+      SELECT 1 FROM profiles
+      WHERE profiles.id = auth.uid() AND profiles.role = 'admin'
+    )
+  );
+
+-- RLS Policies for trades
+CREATE POLICY "Users can view their own trades"
+  ON trades FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM trading_accounts
+      WHERE trading_accounts.id = trades.account_id
+      AND trading_accounts.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Admins can view all trades"
+  ON trades FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM profiles
+      WHERE profiles.id = auth.uid() AND profiles.role = 'admin'
+    )
+  );
+
+-- RLS Policies for payouts
+CREATE POLICY "Users can view their own payouts"
+  ON payouts FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM trading_accounts
+      WHERE trading_accounts.id = payouts.account_id
+      AND trading_accounts.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can request payouts"
+  ON payouts FOR INSERT
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM trading_accounts
+      WHERE trading_accounts.id = account_id
+      AND trading_accounts.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Admins can view all payouts"
+  ON payouts FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM profiles
+      WHERE profiles.id = auth.uid() AND profiles.role = 'admin'
+    )
+  );
+
+CREATE POLICY "Admins can update payouts"
+  ON payouts FOR UPDATE
+  USING (
+    EXISTS (
+      SELECT 1 FROM profiles
+      WHERE profiles.id = auth.uid() AND profiles.role = 'admin'
+    )
+  );
+
+-- Challenges are public (read-only for all authenticated users)
+CREATE POLICY "Anyone can view active challenges"
+  ON challenges FOR SELECT
+  USING (active = true OR auth.uid() IS NOT NULL);
+
+CREATE POLICY "Admins can manage challenges"
+  ON challenges FOR ALL
+  USING (
+    EXISTS (
+      SELECT 1 FROM profiles
+      WHERE profiles.id = auth.uid() AND profiles.role = 'admin'
+    )
+  );
+
+-- Function to generate MT4/MT5 style account credentials
+CREATE OR REPLACE FUNCTION generate_trading_account()
+RETURNS TRIGGER AS $$
+BEGIN
+  -- Generate 8-digit account login (MT4/MT5 style)
+  NEW.account_login := LPAD(FLOOR(RANDOM() * 100000000)::TEXT, 8, '0');
+  
+  -- Generate random password (8 characters)
+  NEW.account_password := SUBSTRING(MD5(RANDOM()::TEXT) FROM 1 FOR 8);
+  
+  -- Set initial balance from challenge
+  IF NEW.challenge_id IS NOT NULL THEN
+    NEW.balance := (SELECT balance FROM challenges WHERE id = NEW.challenge_id);
+    NEW.equity := NEW.balance;
+  END IF;
+  
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger to auto-generate credentials when trading account is created
+CREATE TRIGGER generate_account_credentials
+  BEFORE INSERT ON trading_accounts
+  FOR EACH ROW
+  WHEN (NEW.account_login IS NULL)
+  EXECUTE FUNCTION generate_trading_account();
+
+-- Function to create profile automatically after user signup
+CREATE OR REPLACE FUNCTION handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.profiles (id, full_name, role)
+  VALUES (
+    NEW.id,
+    COALESCE(NEW.raw_user_meta_data->>'full_name', 'User'),
+    'user'
+  )
+  ON CONFLICT (id) DO NOTHING;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Trigger to auto-create profile
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW
+  EXECUTE FUNCTION handle_new_user();
