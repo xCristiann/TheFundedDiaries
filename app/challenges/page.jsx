@@ -79,7 +79,7 @@ export default function ChallengesPage() {
       </div>
 
       <Button
-        onClick={() => router.push(`/checkout?challengeId=`)}
+onClick={() => router.push(`/checkout?challengeId=${challenge.id}`)}
         className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-semibold"
       >
         Get Started
