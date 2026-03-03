@@ -1,56 +1,85 @@
 ﻿"use client";
 
-import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import GlassCard from "@/components/glass-card";
+import { Button } from "@/components/ui/button";
 
 export default function SuccessClient() {
+  const router = useRouter();
   const sp = useSearchParams();
-  const sessionId = sp.get("session_id");
+  const sessionId = sp.get("session_id") || sp.get("sessionId") || "";
 
-  const [msg, setMsg] = useState("Finalizing your order…");
+  const [status, setStatus] = useState("checking");
+  const [details, setDetails] = useState(null);
 
   useEffect(() => {
-    let cancelled = false;
+    let alive = true;
 
-    (async () => {
+    async function check() {
       try {
         if (!sessionId) {
-          setMsg("Payment successful. If your account is not visible yet, refresh Dashboard in 10 seconds.");
+          if (alive) setStatus("missing");
           return;
         }
+        const res = await fetch(`/api/stripe/status/${sessionId}`, { cache: "no-store" });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json?.error || "Failed to verify payment");
 
-        // optional status endpoint (you already have it)
-        const r = await fetch(`/api/stripe/status/${sessionId}`, { cache: "no-store" });
-        if (!r.ok) {
-          setMsg("Payment successful. Your challenge will appear in Dashboard shortly.");
-          return;
+        if (alive) {
+          setDetails(json);
+          setStatus(json?.payment_status || json?.status || "paid");
         }
-        const j = await r.json().catch(() => ({}));
-        if (cancelled) return;
-        setMsg(j?.status ? `Payment status: ${j.status}` : "Payment successful. Your challenge will appear in Dashboard shortly.");
-      } catch {
-        if (!cancelled) setMsg("Payment successful. Your challenge will appear in Dashboard shortly.");
+      } catch (e) {
+        console.error(e);
+        if (alive) setStatus("error");
       }
-    })();
+    }
 
-    return () => { cancelled = true; };
+    check();
+    return () => { alive = false; };
   }, [sessionId]);
 
   return (
-    <div className="min-h-[70vh] flex items-center justify-center px-6">
-      <div className="w-full max-w-xl rounded-2xl border border-white/10 bg-white/[0.03] p-8 backdrop-blur-xl">
-        <h1 className="text-3xl font-bold mb-2">Payment successful</h1>
-        <p className="text-gray-400">{msg}</p>
+    <div className="min-h-[75vh] flex items-center justify-center px-6">
+      <GlassCard className="w-full max-w-2xl p-8">
+        <h1 className="text-4xl font-bold mb-2">Payment Status</h1>
 
-        <div className="mt-6 flex gap-3">
-          <a href="/dashboard" className="rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 px-5 py-3 font-semibold">
+        {status === "checking" && <p className="text-gray-400">Verifying payment...</p>}
+        {status === "missing" && (
+          <p className="text-red-300">
+            Missing session id. If you paid, open this page from Stripe redirect.
+          </p>
+        )}
+        {status === "error" && (
+          <p className="text-red-300">
+            Could not verify payment right now. Try again in a moment.
+          </p>
+        )}
+
+        {status !== "checking" && status !== "missing" && status !== "error" && (
+          <div className="mt-4">
+            <div className="rounded-xl border border-green-500/30 bg-green-500/10 px-4 py-3 text-green-200">
+              Payment looks OK: <b>{String(status)}</b>
+            </div>
+          </div>
+        )}
+
+        {details && (
+          <pre className="mt-6 text-xs text-gray-400 bg-black/20 p-4 rounded-xl overflow-auto">
+{JSON.stringify(details, null, 2)}
+          </pre>
+        )}
+
+        <div className="mt-8 flex gap-3">
+          <Button onClick={() => router.push("/dashboard")} className="bg-blue-600 hover:bg-blue-700">
             Go to Dashboard
-          </a>
-          <a href="/challenges" className="rounded-xl border border-white/10 bg-white/[0.03] px-5 py-3 font-semibold text-gray-200">
+          </Button>
+          <Button onClick={() => router.push("/challenges")} className="bg-white/10 hover:bg-white/15">
             Back to Challenges
-          </a>
+          </Button>
         </div>
-      </div>
+      </GlassCard>
     </div>
   );
 }
