@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
@@ -79,7 +79,7 @@ export default function ChallengesPage() {
       </div>
 
       <Button
-        onClick={() => router.push(`/checkout?challenge=${challenge.id}`)}
+        onClick={() => router.push(`/checkout?challengeId=`)}
         className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-semibold"
       >
         Get Started
@@ -223,3 +223,4 @@ export default function ChallengesPage() {
     </div>
   )
 }
+
