@@ -1,33 +1,42 @@
-﻿export type Provider = "finnhub" | "twelvedata";
+﻿export type SupportedSymbol = "EURUSD" | "XAUUSD" | "US30" | "US500";
 
-export const SUPPORTED = ["EURUSD", "XAUUSD", "US30", "US500"] as const;
-export type SupportedSymbol = typeof SUPPORTED[number];
+export const SUPPORTED: SupportedSymbol[] = ["EURUSD", "XAUUSD", "US30", "US500"];
 
-export function assertSupportedSymbol(s: string): asserts s is SupportedSymbol {
-  if (!SUPPORTED.includes(s as any)) {
-    throw new Error(`Unsupported symbol: ${s}`);
+export function assertSupportedSymbol(symbol: string): asserts symbol is SupportedSymbol {
+  if (!SUPPORTED.includes(symbol as SupportedSymbol)) {
+    throw new Error("Unsupported symbol");
   }
 }
 
-export function providerFor(symbol: SupportedSymbol): Provider {
-  // Finnhub free: stocks/ETFs ok (folosim proxy pentru indici)
+/**
+ * Which provider should handle which symbol.
+ * - Finnhub free works well for US indices using ETF proxies (DIA/SPY).
+ * - Forex/Metals often need a different provider (ex: TwelveData) for EURUSD/XAUUSD.
+ */
+export function providerFor(symbol: SupportedSymbol): "finnhub" | "twelvedata" {
   if (symbol === "US30" || symbol === "US500") return "finnhub";
-
-  // Forex/Metals: merg pe alt provider (ex: TwelveData)
   return "twelvedata";
 }
 
-// Mapare către simbol provider
-export function mapToFinnhub(symbol: SupportedSymbol) {
-  // proxy ETF pentru indici (free)
-  if (symbol === "US30") return { kind: "stock" as const, finnhubSymbol: "DIA" }; // Dow proxy
-  if (symbol === "US500") return { kind: "stock" as const, finnhubSymbol: "SPY" }; // S&P500 proxy
-  throw new Error("Finnhub mapping not available for this symbol on free plan.");
+/**
+ * Map internal symbols -> provider symbols.
+ * Finnhub:
+ * - US30 => DIA (Dow ETF proxy)
+ * - US500 => SPY (S&P 500 ETF proxy)
+ * TwelveData (example):
+ * - EURUSD => EUR/USD
+ * - XAUUSD => XAU/USD
+ */
+export function mapToFinnhub(symbol: SupportedSymbol): string {
+  if (symbol === "US30") return "DIA";
+  if (symbol === "US500") return "SPY";
+  // Finnhub forex/metals may 403 on free plans
+  return symbol;
 }
 
-export function mapToTwelveData(symbol: SupportedSymbol) {
-  // TwelveData format uzual
-  if (symbol === "EURUSD") return { tdSymbol: "EUR/USD" };
-  if (symbol === "XAUUSD") return { tdSymbol: "XAU/USD" };
-  throw new Error("TwelveData mapping not available for symbol.");
+export function mapToTwelveData(symbol: SupportedSymbol): string {
+  if (symbol === "EURUSD") return "EUR/USD";
+  if (symbol === "XAUUSD") return "XAU/USD";
+  // not used for indices by default
+  return symbol;
 }
