@@ -1,5 +1,5 @@
 ﻿import { NextResponse } from "next/server";
-import { mapToFinnhub } from "@/lib/market/symbols";
+import { mapToFinnhub } from "../../../../lib/market/symbols";
 
 export const dynamic = "force-dynamic";
 
@@ -78,3 +78,4 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Server error", detail: String(e?.message || e) }, { status: 500 });
   }
 }
+
