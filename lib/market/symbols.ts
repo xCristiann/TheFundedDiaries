@@ -1,29 +1,25 @@
-﻿export type SupportedSymbol = "EURUSD" | "XAUUSD" | "US30" | "US500";
+﻿export type AppSymbol = "EURUSD" | "XAUUSD" | "US30" | "US500";
 
-/**
- * Finnhub reality:
- * - Free plan is reliable for US equities/ETFs via /quote and /stock/candle.
- * - Forex/Metals endpoints may be blocked (403) depending on plan.
- *
- * We map CFD-style symbols to something testable:
- *  US30  -> DIA (Dow ETF)
- *  US500 -> SPY (S&P500 ETF)
- *
- * Forex/metals try via OANDA symbols (may 403 on your plan):
- *  EURUSD -> OANDA:EUR_USD
- *  XAUUSD -> OANDA:XAU_USD
- */
-export function mapToFinnhub(symbol: string): { kind: "stock" | "forex"; finnhubSymbol: string } | null {
-  switch (symbol) {
-    case "US30":
-      return { kind: "stock", finnhubSymbol: "DIA" };
-    case "US500":
-      return { kind: "stock", finnhubSymbol: "SPY" };
-    case "EURUSD":
-      return { kind: "forex", finnhubSymbol: "OANDA:EUR_USD" };
-    case "XAUUSD":
-      return { kind: "forex", finnhubSymbol: "OANDA:XAU_USD" };
-    default:
-      return null;
-  }
+export function assertSupportedSymbol(sym: string): asserts sym is AppSymbol {
+  const ok = ["EURUSD","XAUUSD","US30","US500"].includes(sym);
+  if (!ok) throw Object.assign(new Error("Unsupported symbol"), { code: "UNSUPPORTED_SYMBOL" });
+}
+
+export function providerFor(symbol: AppSymbol) {
+  if (symbol === "US30" || symbol === "US500") return "finnhub" as const;
+  return "twelvedata" as const;
+}
+
+// Finnhub proxies (free)
+export function mapToFinnhub(symbol: AppSymbol) {
+  if (symbol === "US30") return { finnhubSymbol: "DIA", kind: "stock" as const, label: "US30 (proxy: DIA)" };
+  if (symbol === "US500") return { finnhubSymbol: "SPY", kind: "stock" as const, label: "US500 (proxy: SPY)" };
+  throw Object.assign(new Error("Symbol not supported by Finnhub mapping"), { code: "BAD_MAPPING" });
+}
+
+// Twelve Data FX/Metals
+export function mapToTwelveData(symbol: AppSymbol) {
+  if (symbol === "EURUSD") return { tdSymbol: "EUR/USD", kind: "forex" as const, label: "EURUSD" };
+  if (symbol === "XAUUSD") return { tdSymbol: "XAU/USD", kind: "metal" as const, label: "XAUUSD" };
+  throw Object.assign(new Error("Symbol not supported by TwelveData mapping"), { code: "BAD_MAPPING" });
 }
